@@ -8,7 +8,7 @@ all: bot
 %.o: %.cc %.h
 	$(CXX) $(CFLAGS) -c $< -o $@
 
-bot: bot.o config.o protobuf/ovanbot.pb.o plugin_karma.o plugin_logging.o plugin_owner.o plugin.o main.cc
+bot: bot.o config.o protobuf/ovanbot.pb.o plugin_karma.o plugin_logging.o plugin_owner.o main.cc
 	$(CXX) $(CFLAGS) $^ $(LIBS) -o $@
 
 .PHONY: clean

@@ -6,6 +6,7 @@
 
 #include <fstream>
 #include <sstream>
+#include <queue>
 #include <re2/re2.h>
 
 namespace {
@@ -14,18 +15,40 @@ re2::RE2 inc_karma_re("^(.*)\\+\\+\\s*$");
 }
 
 namespace ovanbot {
+KarmaPlugin::KarmaPlugin() {
+  std::ifstream karma_file (KarmaPath(), std::ios::binary);
+  if (karma_file.good()) {
+    KarmaMap karma_map;
+    karma_map.ParseFromIstream(&karma_file);
+    for (int i = 0; i < karma_map.karma_list_size(); i++) {
+      const auto &k = karma_map.karma_list(i);
+      karma_.insert(std::make_pair(k.entity(), k.karma()));
+    }
+  }
+}
+
 void KarmaPlugin::HandlePrivmsg(const std::string &user,
                                 const std::string &channel,
                                 const std::string &msg) {
   if (channel.empty() || !channel.front() == '#') {
     // don't count private messages
     return;
-  } else if (msg == "!karma") {
+  } else if (msg == "!karma" && !karma_.empty()) {
+    std::priority_queue<std::pair<int, std::string> > queue;
     for (const auto &kv : karma_) {
-      std::stringstream ss;
-      ss << kv.first << ": " << kv.second;
-      robot_->SendPrivmsg(channel, ss.str());
+      queue.push(std::make_pair(kv.second, kv.first));
     }
+
+    std::stringstream ss;
+    const std::size_t count = std::min(10ul, queue.size()) - 1;
+    for (int i = 0; i < count; i++) {
+      auto pair = queue.top();
+      queue.pop();
+      ss << pair.second << ": " << pair.first << ", ";
+    }
+    auto pair = queue.top();
+    ss << pair.second << ": " << pair.first;
+    robot_->SendPrivmsg(channel, ss.str());
     return;
   }
 
@@ -45,9 +68,12 @@ void KarmaPlugin::HandlePrivmsg(const std::string &user,
       it->second--;
     }
   }
+  if (!target.empty()) {
+    Serialize();
+  }
 }
 
-KarmaPlugin::~KarmaPlugin() {
+void KarmaPlugin::Serialize() const {
   KarmaMap karma_map;
   for (const auto &pair : karma_) {
     KarmaMap::Karma *karma = karma_map.add_karma_list();
