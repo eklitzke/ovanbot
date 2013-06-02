@@ -7,16 +7,22 @@
 #include <map>
 #include <string>
 
+#include "./config.h"
 #include "./plugin.h"
 
 namespace ovanbot {
 class KarmaPlugin : public Plugin {
  public:
+  ~KarmaPlugin();
   void HandlePrivmsg(const std::string &user,
                      const std::string &channel,
                      const std::string &msg);
  private:
   std::map<std::string, std::int32_t> karma_;
+
+  inline std::string KarmaPath() const {
+    return JoinPath(working_dir, "karma.pb");
+  }
 };
 }
 
