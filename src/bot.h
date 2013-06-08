@@ -1,8 +1,8 @@
 // -*- C++ -*-
 // Copyright 2013, Evan Klitzke <evan@eklitzke.org>
 
-#ifndef BOT_H_
-#define BOT_H_
+#ifndef OVANBOT_BOT_H_
+#define OVANBOT_BOT_H_
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
@@ -10,6 +10,8 @@
 #include <list>
 #include <memory>
 #include <string>
+
+#include "./protocol.h"
 
 using boost::asio::ip::tcp;
 
@@ -50,6 +52,10 @@ class IRCRobot {
   std::string extra_data_;
   boost::asio::streambuf request_;
 
+  void HandleCode(ResponseCode code,
+                  const std::string &server,
+                  const std::string &target,
+                  const std::string &args);
   void HandleConnect(const boost::system::error_code&, tcp::resolver::iterator);
   void HandleHandshake(const boost::system::error_code&);
   void HandleWrite(const char *, const boost::system::error_code&, size_t);
@@ -64,9 +70,21 @@ class Plugin {
  public:
   virtual ~Plugin() {}
   inline void set_robot(IRCRobot *robot) { robot_ = robot; }
+
+  virtual void HandleJoin(const std::string &user,
+                          const std::string &channel);
+  virtual void HandleKick(const std::string &user,
+                          const std::string &channel,
+                          const std::string &reason);
+  virtual void HandlePart(const std::string &user,
+                          const std::string &channel,
+                          const std::string &reason);
   virtual void HandlePrivmsg(const std::string &user,
                              const std::string &channel,
                              const std::string &msg);
+  virtual void HandleQuit(const std::string &user,
+                          const std::string &reason);
+
 
  protected:
   IRCRobot *robot_;
@@ -78,4 +96,4 @@ class Plugin {
 
 }
 
-#endif  // BOT_H_
+#endif  // OVANBOT_BOT_H_

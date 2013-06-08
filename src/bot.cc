@@ -5,6 +5,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include <re2/re2.h>
 
@@ -19,27 +20,30 @@
 #include "./plugin_karma.h"
 #include "./plugin_logging.h"
 #include "./plugin_owner.h"
+#include "./protocol.h"
 
 using boost::asio::ip::tcp;
 
 namespace {
+const re2::RE2 server_numeric_reply_re("^:([a-z0-9.-]+) (\\d\\d\\d) (\\S+) (.*)");
+
 // IRC commands
 const std::string user_ = "^:(\\S+)!\\S+ ";
 
 // :evan_!evan@24.205.85.74 JOIN :#test
-re2::RE2 join_re(user_ + "JOIN :(.+)");
+const re2::RE2 join_re(user_ + "JOIN :(.+)");
 
 // :evan_!evan@24.205.85.74 PART #test :lol
-re2::RE2 part_re(user_ + "PART (\\S+) :(.*)");
+const re2::RE2 part_re(user_ + "PART (\\S+) :(.*)");
 
 // PING :irc.freenode.net
-re2::RE2 ping_re("^PING :(.+)");
+const re2::RE2 ping_re("^PING :(.+)");
 
 // :evan!evan@204.236.178.63 PRIVMSG #test :yay
-re2::RE2 privmsg_re(user_ + "PRIVMSG (\\S+) :(.+)");
+const re2::RE2 privmsg_re(user_ + "PRIVMSG (\\S+) :(.+)");
 
 // :evan_!evan@24.205.85.74 QUIT :Quit: leaving
-re2::RE2 quit_re(user_ + "QUIT :(.+)");
+const re2::RE2 quit_re(user_ + "QUIT :(.+)");
 
 struct CheckRegexes {
   CheckRegexes() {
@@ -103,6 +107,11 @@ void IRCRobot::Connect(boost::asio::ip::tcp::resolver::iterator
       boost::bind(&IRCRobot::HandleConnect, this,
                   boost::asio::placeholders::error, ++endpoint_iterator));
 }
+
+void IRCRobot::HandleCode(ResponseCode code,
+                          const std::string &server,
+                          const std::string &target,
+                          const std::string &args) {}
 
 void IRCRobot::HandleConnect(const boost::system::error_code& error,
                              tcp::resolver::iterator
@@ -198,22 +207,38 @@ void IRCRobot::HandleRead(const boost::system::error_code &error,
 void IRCRobot::HandleLine(const std::string &line) {
   std::cout << "R: " << line << "\n";
 
-  re2::StringPiece string1, string2, string3;
-  if (RE2::FullMatch(line, ping_re, &string1)) {
-    SendLine("PONG " + string1.as_string());
-  } else if (RE2::FullMatch(line, privmsg_re, &string1, &string2, &string3)) {
+  std::string string1, string2, string3, string4;
+  if (RE2::FullMatch(line, server_numeric_reply_re,
+                     &string1, &string2, &string3, &string4)) {
+    ResponseCode code = ParseResponseCode(
+        boost::lexical_cast<std::uint16_t>(string2));
+    HandleCode(code, string1, string3, string4);
+  } else if (RE2::FullMatch(line, join_re, &string1, &string2)) {
     for (auto &plugin : plugins_) {
-      plugin->HandlePrivmsg(string1.as_string(),
-                            string2.as_string(),
-                            string3.as_string());
+      plugin->HandleJoin(string1,     // user
+                         string2);    // channel
+    }
+  } else if (RE2::FullMatch(line, part_re, &string1, &string2, &string3)) {
+    for (auto &plugin : plugins_) {
+      plugin->HandlePart(string1,     // user
+                         string2,     // channel
+                         string3);    // msg
 
     }
-  } else if (RE2::FullMatch(line, join_re, &string1, &string2)) {
-    //    HandleJoin(string1.as_string(), string2.as_string());
+  } else if (RE2::FullMatch(line, ping_re, &string1)) {
+    SendLine("PONG " + string1);
+  } else if (RE2::FullMatch(line, privmsg_re, &string1, &string2, &string3)) {
+    for (auto &plugin : plugins_) {
+      plugin->HandlePrivmsg(string1,  // user
+                            string2,  // target
+                            string3); // msg
+
+    }
   } else if (RE2::FullMatch(line, quit_re, &string1, &string2)) {
-    //    HandleQuit(string1.as_string(), string2.as_string());
-  } else if (RE2::FullMatch(line, part_re, &string1, &string2, &string3)) {
-    //    HandlePart(string1.as_string(), string2.as_string(), string3.as_string());
+    for (auto &plugin : plugins_) {
+      plugin->HandleQuit(string1,     // user
+                         string2);    // reason
+    }
   }
 }
 
@@ -227,7 +252,21 @@ void IRCRobot::HandleWrite(const char *outgoing_msg,
   }
 }
 
+void Plugin::HandleJoin(const std::string &user,
+                        const std::string &channel) {}
+
+void Plugin::HandleKick(const std::string &user,
+                        const std::string &channel,
+                        const std::string &reason) {}
+
+void Plugin::HandlePart(const std::string &user,
+                        const std::string &channel,
+                        const std::string &reason) {}
+
 void Plugin::HandlePrivmsg(const std::string &user,
                            const std::string &channel,
                            const std::string &msg) {}
+
+void Plugin::HandleQuit(const std::string &user,
+                        const std::string &reason) {}
 }
